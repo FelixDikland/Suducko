@@ -53,29 +53,56 @@ def find_mid(image):
     return sum(x)//total, sum(y)//total, [sum(row) for idx, row in enumerate(transposed)], [sum(row) for idx, row in enumerate(image)]
 
 
-def find_edges(mid_x, mid_y, x, y, thresh):
+def find_edges(mid_x, mid_y, x, y, thresh, rim):
 
-    for idx, value in enumerate(x[mid_x:]):
+    min_x_upp = min(x[mid_x:len(x)-rim])
+    x_upp = [value-min_x_upp for value in x[mid_x:]]
+    for idx, value in enumerate(x_upp):
         if value < thresh:
             x_edge_upp = idx+mid_x
             break
 
-    for idx, value in enumerate(x[mid_x::-1]):
+    min_x_low = min(x[mid_x:rim:-1])
+    x_low = [value - min_x_low for value in x[mid_x::-1]]
+    for idx, value in enumerate(x_low):
         if value < thresh:
             x_edge_low = mid_x-idx
             break
 
-    for idx, value in enumerate(y[mid_y:]):
+    min_y_upp = min(y[mid_y:len(y)-rim])
+    y_upp = [value-min_y_upp for value in y[mid_y:]]
+    for idx, value in enumerate(y_upp):
         if value < thresh:
             y_edge_upp = idx+mid_y
             break
 
-    for idx, value in enumerate(y[mid_y::-1]):
+    min_y_low = min(y[mid_y:rim:-1])
+    y_low = [value - min_y_low for value in y[mid_y::-1]]
+    for idx, value in enumerate(y_low):
         if value < thresh:
             y_edge_low = mid_y-idx
             break
 
     return [x_edge_upp, x_edge_low], [y_edge_upp,  y_edge_low]
+
+
+def edge_to_corner(x_edge, y_edge):
+    corner_matrix = [[0,0], [0,1], [1,1], [1,0]]
+    corner_coords = []
+    for corner in corner_matrix:
+        corner_coords.append([x_edge[corner[0]], y_edge[corner[1]]])
+
+    return corner_coords
+
+
+def crop_to_edge(image, x_edge, y_edge):
+    
+
+
+def plot_corners(corner_coords):
+    corner_ofset = [corner_coords[(idx+1)%4] for idx, _ in enumerate(corner_coords)]
+    for corner1, corner2 in zip(corner_coords, corner_ofset):
+        plt.plot([corner1[0], corner2[0]], [corner1[1], corner2[1]])
 
 
 image_paths =  ['sudoku_straight.jpeg', 'sudoku_diag.jpeg',  'sudoku_straight_tilted.jpeg', 'sudoku_diag_tilted.jpeg']
@@ -86,10 +113,10 @@ for idx, path in enumerate(image_paths):
     dark = thresh(image, 0.6)
     edges = edges_binar(dark)
     mid_x, mid_y, x, y = find_mid(edges)
-    x_edge, y_edge = find_edges(mid_x, mid_y, x, y,5)
+    x_edge, y_edge = find_edges(mid_x, mid_y, x, y,2)
+    corners = edge_to_corner(x_edge, y_edge)
     plt.subplot(2,3,(idx+1))
     plt.imshow(edges)
-    plt.plot(x_edge, [y_edge[0], y_edge[0]])
-    plt.plot([x_edge[0], x_edge[0]], y_edge)
+    plot_corners(corners)
 
 io.show()
