@@ -3,6 +3,8 @@ from matplotlib import pyplot as plt
 from skimage.feature import local_binary_pattern
 import numpy as np
 import math
+from datetime import datetime
+startTime = datetime.now()
 
 def preprocess(image_path):
     img = io.imread(image_path)
@@ -97,6 +99,7 @@ def edge_to_corner(x_edge, y_edge):
 
 def crop_to_edge(image, x_edge, y_edge, mid_x, mid_y):
     image = image[y_edge[1]: y_edge[0],x_edge[1]:x_edge[0]]
+
     return image, mid_x - x_edge[1], mid_y - y_edge[1]
 
 
@@ -118,7 +121,29 @@ def get_euclidean_distances(x_y_pairs, mid_x, mid_y):
     return distances
 
 
-def get_corners(x_y_pairs, distances, mid_x, mid_y):
+def check_orientation(image):
+    y = np.array([sum(row) for row in image if sum(row) > 0])
+    transposed = image.transpose()
+    x = np.array([sum(row) for row in transposed if sum(row) > 0])
+
+    x = np.convolve(x, np.ones(10)/10, mode = 'valid')
+    y = np.convolve(y, np.ones(10)/10, mode = 'valid')
+
+    y =  y - y.min()
+    y = y /  y.max()
+
+    x = x - x.min()
+    x = x / x.max()
+
+    std = np.std(x) + np.std(y)
+
+    if std <= 0.5:
+        return 1
+    else:
+        return 0
+
+
+def get_corners_tilted(x_y_pairs, distances, mid_x, mid_y):
 
     dist_upp = 20
     dist_low = 20
@@ -128,6 +153,7 @@ def get_corners(x_y_pairs, distances, mid_x, mid_y):
     for coord, dist in zip(x_y_pairs, distances):
         x = coord[0] - mid_x
         y = coord[1] - mid_y
+
         if x < y:
             if (x < -1*y) and (dist > dist_left):
                 corn_left = coord
@@ -146,9 +172,37 @@ def get_corners(x_y_pairs, distances, mid_x, mid_y):
     return [corn_left, corn_right, corn_upp, corn_low]
 
 
+def get_corners_straight(x_y_pairs, distances, mid_x, mid_y):
+    dist_upp = 20
+    dist_low = 20
+    dist_left = 20
+    dist_right = 20
+
+    for coord, dist in zip(x_y_pairs, distances):
+        x = coord[0] - mid_x
+        y = coord[1] - mid_y
+
+        if x < 0:
+            if (y < 0) and (dist > dist_left):
+                corn_left = coord
+                dist_left = dist
+            elif (y > 0) and (dist > dist_upp):
+                corn_upp = coord
+                dist_upp = dist
+        elif x > 0:
+            if (y > 0) and (dist > dist_right):
+                corn_right = coord
+                dist_right = dist
+            if (y < 0) and (dist > dist_low):
+                corn_low = coord
+                dist_low = dist
+    
+    return [corn_left, corn_right, corn_upp, corn_low]
+
 
 image_paths =  ['sudoku_straight.jpeg', 'sudoku_diag.jpeg',  'sudoku_straight_tilted.jpeg', 'sudoku_diag_tilted.jpeg']
-plt.figure()
+plt.figure(1)
+
 for idx, path in enumerate(image_paths):
     image = preprocess(path)
 
@@ -158,14 +212,18 @@ for idx, path in enumerate(image_paths):
     mid_x, mid_y, x, y = find_mid(edges)
     x_edge, y_edge = find_edges(mid_x, mid_y, x, y,2)
 
-    edges, mid_x, mid_y = crop_to_edge(edges, x_edge, y_edge, mid_x, mid_y)
+    edges, mid_x_new, mid_y_new = crop_to_edge(edges, x_edge, y_edge, mid_x, mid_y)
 
     x_y_pairs = get_x_y_pairs(edges)
-    distances = get_euclidean_distances(x_y_pairs, mid_x, mid_y)
+    distances = get_euclidean_distances(x_y_pairs, mid_x_new, mid_y_new)
 
-    corners = get_corners(x_y_pairs, distances,mid_x, mid_y)
+    if check_orientation(edges) == 1:
+        corners = get_corners_straight(x_y_pairs, distances, mid_x_new, mid_y_new)
+    else:
+        corners = get_corners_tilted(x_y_pairs, distances, mid_x_new, mid_y_new)
 
-    plt.subplot(2,3,(idx+1))
+    print(datetime.now() - startTime)
+    plt.subplot(2, 3, (idx+1))
     plt.imshow(edges)
     for corner in corners:
         plt.plot(corner[0], corner[1], 'ro')
