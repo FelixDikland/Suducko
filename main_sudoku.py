@@ -55,6 +55,27 @@ def find_mid(image):
     return sum(x)//total, sum(y)//total, [sum(row) for idx, row in enumerate(transposed)], [sum(row) for idx, row in enumerate(image)]
 
 
+def check_orientation(image):
+    y = np.array([sum(row) for row in image if sum(row) > 0])
+    transposed = image.transpose()
+    x = np.array([sum(row) for row in transposed if sum(row) > 0])
+
+    x = np.convolve(x, np.ones(10)/10, mode = 'valid')
+    y = np.convolve(y, np.ones(10)/10, mode = 'valid')
+
+    y =  y - y.min()
+    y = y /  y.max()
+
+    x = x - x.min()
+    x = x / x.max()
+
+    std = np.std(x) + np.std(y)
+
+    if std <= 0.5:
+        return 1
+    else:
+        return 0
+
 def find_edges(mid_x, mid_y, x, y, thresh):
 
     min_x_upp = min(x[mid_x:])
@@ -99,8 +120,11 @@ def edge_to_corner(x_edge, y_edge):
 
 def crop_to_edge(image, x_edge, y_edge, mid_x, mid_y):
     image = image[y_edge[1]: y_edge[0],x_edge[1]:x_edge[0]]
-
-    return image, mid_x - x_edge[1], mid_y - y_edge[1]
+    labels = morphology.label(image, connectivity=2)
+    orientation = check_orientation(image)
+    assert( labels.max() != 0 )
+    image = labels == np.argmax(np.bincount(labels.flat)[1:])+1
+    return image, mid_x - x_edge[1], mid_y - y_edge[1], orientation
 
 
 def plot_corners(corner_coords):
@@ -119,28 +143,6 @@ def get_x_y_pairs(image):
 def get_euclidean_distances(x_y_pairs, mid_x, mid_y):
     distances = [ math.sqrt((value[0] - mid_x)**2 + (value[1] - mid_y)**2) for value in x_y_pairs]
     return distances
-
-
-def check_orientation(image):
-    y = np.array([sum(row) for row in image if sum(row) > 0])
-    transposed = image.transpose()
-    x = np.array([sum(row) for row in transposed if sum(row) > 0])
-
-    x = np.convolve(x, np.ones(10)/10, mode = 'valid')
-    y = np.convolve(y, np.ones(10)/10, mode = 'valid')
-
-    y =  y - y.min()
-    y = y /  y.max()
-
-    x = x - x.min()
-    x = x / x.max()
-
-    std = np.std(x) + np.std(y)
-
-    if std <= 0.5:
-        return 1
-    else:
-        return 0
 
 
 def get_corners_tilted(x_y_pairs, distances, mid_x, mid_y):
@@ -200,6 +202,41 @@ def get_corners_straight(x_y_pairs, distances, mid_x, mid_y):
     return [corn_left, corn_right, corn_upp, corn_low]
 
 
+def find_rc(point1, point2):
+    diff_x = point1[0] - point2[0]
+    diff_y = point1[1] - point2[1]
+    return diff_y/diff_x
+
+
+def interpolate(image, point):
+    lower_left = [ value // 1 for value in point]
+    offsets = [value % 1 for value in point]
+    cell = [[1,1], [1,0], [0,1], [0,0]]
+
+    total_value = 0
+    for corner in cell:
+        weight = 1
+        for offset, value in zip(offsets, corner):
+            if value == 1:
+                weight *= offset
+            else:
+                weight *= 1 - offset
+
+        total_value += image[int(lower_left[0]+corner[0]),int(lower_left[1]+corner[1])]*weight
+    return total_value
+
+
+def translate_crop(corners, samples):
+    rc_left = find_rc(corner[0], corner[2])
+    rc_right = find_rc(corner[3], corner[1])
+
+    x_diff_left = corner[2][0] - corner[0][0]
+    x_diff_right = corner[1][0] - corner[3][0]
+
+    step_left = x_diff_left/samples
+    step_right = x_diff_right/samples
+
+
 image_paths =  ['sudoku_straight.jpeg', 'sudoku_diag.jpeg',  'sudoku_straight_tilted.jpeg', 'sudoku_diag_tilted.jpeg']
 plt.figure(1)
 
@@ -212,20 +249,20 @@ for idx, path in enumerate(image_paths):
     mid_x, mid_y, x, y = find_mid(edges)
     x_edge, y_edge = find_edges(mid_x, mid_y, x, y,2)
 
-    edges, mid_x_new, mid_y_new = crop_to_edge(edges, x_edge, y_edge, mid_x, mid_y)
+    edges, mid_x_new, mid_y_new, orientation = crop_to_edge(edges, x_edge, y_edge, mid_x, mid_y)
 
     x_y_pairs = get_x_y_pairs(edges)
     distances = get_euclidean_distances(x_y_pairs, mid_x_new, mid_y_new)
 
-    if check_orientation(edges) == 1:
+    if orientation == 1:
         corners = get_corners_straight(x_y_pairs, distances, mid_x_new, mid_y_new)
     else:
         corners = get_corners_tilted(x_y_pairs, distances, mid_x_new, mid_y_new)
 
     print(datetime.now() - startTime)
     plt.subplot(2, 3, (idx+1))
-    plt.imshow(edges)
+    plt.imshow(image)
     for corner in corners:
-        plt.plot(corner[0], corner[1], 'ro')
+        plt.plot(corner[0]+x_edge[1], corner[1]+y_edge[1], 'ro')
 
 io.show()
