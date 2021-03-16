@@ -145,7 +145,7 @@ def get_euclidean_distances(x_y_pairs, mid_x, mid_y):
     return distances
 
 
-def get_corners_tilted(x_y_pairs, distances, mid_x, mid_y):
+def get_corners_tilted(x_y_pairs, distances, mid_x, mid_y, x_offset, y_offset):
 
     dist_upp = 20
     dist_low = 20
@@ -171,10 +171,12 @@ def get_corners_tilted(x_y_pairs, distances, mid_x, mid_y):
                 corn_low = coord
                 dist_low = dist
     
-    return [corn_left, corn_right, corn_upp, corn_low]
+    corners = [corn_left, corn_low, corn_right, corn_upp]
+    corners = [[corn[0]+x_offset, corn[1]+y_offset] for corn in corners]
+    return corners
 
 
-def get_corners_straight(x_y_pairs, distances, mid_x, mid_y):
+def get_corners_straight(x_y_pairs, distances, mid_x, mid_y, x_offset, y_offset):
     dist_upp = 20
     dist_low = 20
     dist_left = 20
@@ -199,13 +201,22 @@ def get_corners_straight(x_y_pairs, distances, mid_x, mid_y):
                 corn_low = coord
                 dist_low = dist
     
-    return [corn_left, corn_right, corn_upp, corn_low]
+    corners = [corn_left, corn_low, corn_right, corn_upp]
+    corners = [[corn[0]+x_offset, corn[1]+y_offset] for corn in corners]
+    return corners
 
 
-def find_rc(point1, point2):
+def find_rc_b(point1, point2, grid_size):
     diff_x = point1[0] - point2[0]
     diff_y = point1[1] - point2[1]
-    return diff_y/diff_x
+
+    rc = diff_y/diff_x
+
+    b = point1[1] - (point1[0] * rc)
+
+    x = np.linspace(point1[0], point2[0], grid_size)
+
+    return x, rc, b
 
 
 def interpolate(image, point):
@@ -226,15 +237,23 @@ def interpolate(image, point):
     return total_value
 
 
-def translate_crop(corners, samples):
-    rc_left = find_rc(corner[0], corner[2])
-    rc_right = find_rc(corner[3], corner[1])
+def translate_crop(corners, image, grid_size):
 
-    x_diff_left = corner[2][0] - corner[0][0]
-    x_diff_right = corner[1][0] - corner[3][0]
+    cropped_img = np.zeros((grid_size, grid_size))
 
-    step_left = x_diff_left/samples
-    step_right = x_diff_right/samples
+    x_left, rc_left, b_left = find_rc_b(corners[0], corners[1], grid_size)
+    x_right, rc_right, b_right = find_rc_b(corners[3], corners[2], grid_size)
+
+    left_points = [[x, x*rc_left+b_left] for x in x_left]
+    right_points = [[x, x*rc_right+b_right] for x in x_right]
+
+    for idx, point in enumerate(zip(left_points, right_points)):
+
+        x, rc, b = find_rc_b(point[0], point[1], grid_size)
+        row = [interpolate(image, [value, value*rc+b]) for value in x]
+        cropped_img[idx, :] = row
+
+    return cropped_img
 
 
 image_paths =  ['sudoku_straight.jpeg', 'sudoku_diag.jpeg',  'sudoku_straight_tilted.jpeg', 'sudoku_diag_tilted.jpeg']
@@ -255,14 +274,19 @@ for idx, path in enumerate(image_paths):
     distances = get_euclidean_distances(x_y_pairs, mid_x_new, mid_y_new)
 
     if orientation == 1:
-        corners = get_corners_straight(x_y_pairs, distances, mid_x_new, mid_y_new)
+        corners = get_corners_straight(x_y_pairs, distances, mid_x_new, mid_y_new, x_edge[1], y_edge[1])
     else:
-        corners = get_corners_tilted(x_y_pairs, distances, mid_x_new, mid_y_new)
+        corners = get_corners_tilted(x_y_pairs, distances, mid_x_new, mid_y_new, x_edge[1], y_edge[1])
 
+
+    # cropped_img = translate_crop(corners, image, 200)
     print(datetime.now() - startTime)
     plt.subplot(2, 3, (idx+1))
     plt.imshow(image)
-    for corner in corners:
-        plt.plot(corner[0]+x_edge[1], corner[1]+y_edge[1], 'ro')
+
+    corner_ofset = [corners[(idx+1)%4] for idx, _ in enumerate(corners)]
+    for corner1, corner2 in zip(corners, corner_ofset):
+        x, rc, b = find_rc_b(corner1, corner2, 200)
+        plt.plot(x, x*rc+b)
 
 io.show()
