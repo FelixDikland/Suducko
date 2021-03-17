@@ -214,9 +214,7 @@ def find_rc_b(point1, point2, grid_size):
 
     b = point1[1] - (point1[0] * rc)
 
-    x = np.linspace(point1[0], point2[0], grid_size)
-
-    return x, rc, b
+    return  rc, b
 
 
 def interpolate(image, point):
@@ -242,74 +240,116 @@ def interpolate(image, point):
     return total_value
 
 
-def translate_crop(corners, image, grid_size):
+def get_sample_points(vanishing_point, point1, point2, grid_size):
 
-    cropped_img = np.zeros((grid_size, grid_size))
+    rc, b = find_rc_b(point1, point2, grid_size)
 
-    _, rc_left, b_left = find_rc_b(corners[1], corners[0], grid_size)
-    _, rc_right, b_right = find_rc_b(corners[2], corners[3], grid_size)
+    distances = get_euclidean_distances([point1, point2], vanishing_point[0], vanishing_point[1])
+
+    if vanishing_point[0] > point1[0]:
+
+        step_factor = np.linspace(max(distances)/(min(distances)), 1, grid_size)
+        step_size = abs(point1[0]-point2[0])/(grid_size)
+
+        x_start = min([point1[0],point2[0]])
+        x = [x_start+idx*factor*step_size for idx, factor in enumerate(step_factor)]
+        sample_points = [[rc*value + b, value] for value in x]
+    else:
+        step_factor = np.linspace(min(distances)/(max(distances)), 1, grid_size)
+        step_size = abs(point1[0]-point2[0])/(grid_size)
+
+        x_start = min([point1[0],point2[0]])
+        x = [x_start+idx*factor*step_size for idx, factor in enumerate(step_factor)]
+        sample_points = [[rc*value + b, value] for value in x]
+
+    return sample_points
+
+
+def get_sample_points_row(vanishing_point, point1, point2, grid_size):
+
+    rc, b = find_rc_b(point1, point2, grid_size)
+
+    distances = get_euclidean_distances([point1, point2], vanishing_point[0], vanishing_point[1])
+
+    if vanishing_point[0] > point1[0]:
+
+        step_factor = np.linspace(max(distances)/(min(distances)), 1, grid_size)
+        step_size = abs(point1[0]-point2[0])/(grid_size)
+
+        x_start = min([point1[0],point2[0]])
+        x = [x_start+idx*factor*step_size for idx, factor in enumerate(step_factor)]
+        sample_points = [[ value, rc*value + b] for value in x]
+    else:
+        step_factor = np.linspace(min(distances)/(max(distances)), 1, grid_size)
+        step_size = abs(point1[0]-point2[0])/(grid_size)
+
+        x_start = min([point1[0],point2[0]])
+        x = [x_start+idx*factor*step_size for idx, factor in enumerate(step_factor)]
+        sample_points = [[ value, rc*value + b] for value in x]
+
+    return sample_points
+
+
+def get_vanishing_point(edge1, edge2, grid_size):
+    rc_left, b_left = find_rc_b(edge1[0], edge1[1], grid_size)
+    rc_right, b_right = find_rc_b(edge2[0], edge2[1], grid_size)
 
     x_intersect = (b_right-b_left)/(rc_left-rc_right)
     y_intersect = x_intersect*rc_left+b_left
 
-    distances = get_euclidean_distances(corners, x_intersect, y_intersect)
-    factors_left = [ value / sum(distances[0:2]) *2 for value in distances[0:2]]
-    factors_right = [ value / sum(distances[2:4]) *2 for value in distances[2:4]]
+    return [x_intersect, y_intersect]
 
-    step_factors_left = np.linspace(min(factors_left), max(factors_left), grid_size-1)
-    step_factors_right = np.linspace(min(factors_right), max(factors_right), grid_size-1)
 
-    step_left = abs(corners[1][0]-corners[0][0])/(grid_size)
-    step_right = abs(corners[2][0]-corners[3][0])/(grid_size)
+def translate_crop(corners, image, grid_size):
 
-    x_start_left = min([corners[1][0], corners[0][0]])
-    left_x = [x_start_left+idx*factor*step_left for idx, factor in enumerate(step_factors_left)]
-    left_points = [[x, rc_left*b_left*x] for x in left_x]
+    cropped_img = np.zeros((grid_size, grid_size))
+    vanishing_point_row = get_vanishing_point([corners[1], corners[0]], [corners[2], corners[3]], grid_size)
 
-    x_start_right = min([corners[2][0], corners[3][0]])
-    right_x = [x_start_right+idx*factor*step_right for idx, factor in enumerate(step_factors_right)]
-    right_points = [[x,rc_right*b_right*x] for x in right_x]
+    left_points = get_sample_points(vanishing_point_row, corners[1], corners[0], grid_size)
+    right_points = get_sample_points(vanishing_point_row, corners[2], corners[3], grid_size)
 
+    vanishing_point_col = get_vanishing_point([corners[2], corners[1]], [corners[3], corners[0]], grid_size)
     for idx, point in enumerate(zip(left_points, right_points)):
-
-        x, rc, b = find_rc_b(point[0], point[1], grid_size)
-        row = [interpolate(image, [value, value*rc+b]) for value in x]
-        cropped_img[idx, :] = row
+        sample_points = get_sample_points_row(vanishing_point_col, point[0], point[1], grid_size)
+        row = [interpolate(image, sample) for sample in sample_points]
+        cropped_img[grid_size - idx -1, :] = row
 
     return cropped_img
 
 
-image_paths =  ['sudoku_straight.jpeg', 'sudoku_diag.jpeg',  'sudoku_straight_tilted.jpeg', 'sudoku_diag_tilted.jpeg']
-plt.figure(1)
+def main(plot):
+    image_paths =  ['sudoku_straight.jpeg', 'sudoku_diag.jpeg',  'sudoku_straight_tilted.jpeg', 'sudoku_diag_tilted.jpeg']
+    if plot == 'yes':
+        plt.figure(1)
 
-for idx, path in enumerate(image_paths):
-    image = preprocess(path)
+    for idx, path in enumerate(image_paths):
+        image = preprocess(path)
 
-    dark = thresh(image, 0.6)
-    edges = edges_binar(dark)
+        dark = thresh(image, 0.6)
+        edges = edges_binar(dark)
 
-    mid_x, mid_y, x, y = find_mid(edges)
-    x_edge, y_edge = find_edges(mid_x, mid_y, x, y,2)
+        mid_x, mid_y, x, y = find_mid(edges)
+        x_edge, y_edge = find_edges(mid_x, mid_y, x, y,2)
 
-    edges, mid_x_new, mid_y_new, orientation = crop_to_edge(edges, x_edge, y_edge, mid_x, mid_y)
+        edges, mid_x_new, mid_y_new, orientation = crop_to_edge(edges, x_edge, y_edge, mid_x, mid_y)
 
-    x_y_pairs = get_x_y_pairs(edges)
-    distances = get_euclidean_distances(x_y_pairs, mid_x_new, mid_y_new)
+        x_y_pairs = get_x_y_pairs(edges)
+        distances = get_euclidean_distances(x_y_pairs, mid_x_new, mid_y_new)
 
-    if orientation == 1:
-        corners = get_corners_straight(x_y_pairs, distances, mid_x_new, mid_y_new, x_edge[1], y_edge[1])
-    else:
-        corners = get_corners_tilted(x_y_pairs, distances, mid_x_new, mid_y_new, x_edge[1], y_edge[1])
+        if orientation == 1:
+            corners = get_corners_straight(x_y_pairs, distances, mid_x_new, mid_y_new, x_edge[1], y_edge[1])
+        else:
+            corners = get_corners_tilted(x_y_pairs, distances, mid_x_new, mid_y_new, x_edge[1], y_edge[1])
 
 
-    cropped_img = translate_crop(corners, image, 200)
-    print(datetime.now() - startTime)
-    plt.subplot(2, 3, (idx+1))
-    plt.imshow(cropped_img)
+        cropped_img = translate_crop(corners, image, 250)
+        print(datetime.now() - startTime)
 
-    # corner_ofset = [corners[(idx+1)%4] for idx, _ in enumerate(corners)]
-    # for corner1, corner2 in zip(corners, corner_ofset):
-    #     x, rc, b = find_rc_b(corner1, corner2, 200)
-    #     plt.plot(x, x*rc+b)
+        if plot == 'yes':
+            plt.subplot(2, 2, idx+1)
+            plt.imshow(cropped_img, cmap = 'gray')
+
+
+main('yes')
 
 io.show()
