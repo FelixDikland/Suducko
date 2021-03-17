@@ -225,15 +225,20 @@ def interpolate(image, point):
     cell = [[1,1], [1,0], [0,1], [0,0]]
 
     total_value = 0
-    for corner in cell:
-        weight = 1
-        for offset, value in zip(offsets, corner):
-            if value == 1:
-                weight *= offset
-            else:
-                weight *= 1 - offset
+    height, width = np.shape(image)
 
-        total_value += image[int(lower_left[0]+corner[0]),int(lower_left[1]+corner[1])]*weight
+    if (point[0]+1 >= height) or (point[1]+1 >= width):
+        total_value = 0
+    else: 
+        for corner in cell:
+            weight = 1
+            for offset, value in zip(offsets, corner):
+                if value == 1:
+                    weight *= offset
+                else:
+                    weight *= 1 - offset
+
+            total_value += image[int(lower_left[0]+corner[0]),int(lower_left[1]+corner[1])]*weight
     return total_value
 
 
@@ -241,11 +246,11 @@ def translate_crop(corners, image, grid_size):
 
     cropped_img = np.zeros((grid_size, grid_size))
 
-    x_left, rc_left, b_left = find_rc_b(corners[0], corners[1], grid_size)
-    x_right, rc_right, b_right = find_rc_b(corners[3], corners[2], grid_size)
+    x_left, rc_left, b_left = find_rc_b(corners[1], corners[0], grid_size)
+    x_right, rc_right, b_right = find_rc_b(corners[2], corners[3], grid_size)
 
-    left_points = [[x, x*rc_left+b_left] for x in x_left]
-    right_points = [[x, x*rc_right+b_right] for x in x_right]
+    left_points = [[x*rc_left+b_left, x] for x in x_left]
+    right_points = [[x*rc_right+b_right, x] for x in x_right]
 
     for idx, point in enumerate(zip(left_points, right_points)):
 
@@ -279,14 +284,14 @@ for idx, path in enumerate(image_paths):
         corners = get_corners_tilted(x_y_pairs, distances, mid_x_new, mid_y_new, x_edge[1], y_edge[1])
 
 
-    # cropped_img = translate_crop(corners, image, 200)
+    cropped_img = translate_crop(corners, image, 200)
     print(datetime.now() - startTime)
     plt.subplot(2, 3, (idx+1))
-    plt.imshow(image)
+    plt.imshow(cropped_img)
 
-    corner_ofset = [corners[(idx+1)%4] for idx, _ in enumerate(corners)]
-    for corner1, corner2 in zip(corners, corner_ofset):
-        x, rc, b = find_rc_b(corner1, corner2, 200)
-        plt.plot(x, x*rc+b)
+    # corner_ofset = [corners[(idx+1)%4] for idx, _ in enumerate(corners)]
+    # for corner1, corner2 in zip(corners, corner_ofset):
+    #     x, rc, b = find_rc_b(corner1, corner2, 200)
+    #     plt.plot(x, x*rc+b)
 
 io.show()
