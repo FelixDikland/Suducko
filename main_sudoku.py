@@ -246,11 +246,29 @@ def translate_crop(corners, image, grid_size):
 
     cropped_img = np.zeros((grid_size, grid_size))
 
-    x_left, rc_left, b_left = find_rc_b(corners[1], corners[0], grid_size)
-    x_right, rc_right, b_right = find_rc_b(corners[2], corners[3], grid_size)
+    _, rc_left, b_left = find_rc_b(corners[1], corners[0], grid_size)
+    _, rc_right, b_right = find_rc_b(corners[2], corners[3], grid_size)
 
-    left_points = [[x*rc_left+b_left, x] for x in x_left]
-    right_points = [[x*rc_right+b_right, x] for x in x_right]
+    x_intersect = (b_right-b_left)/(rc_left-rc_right)
+    y_intersect = x_intersect*rc_left+b_left
+
+    distances = get_euclidean_distances(corners, x_intersect, y_intersect)
+    factors_left = [ value / sum(distances[0:2]) *2 for value in distances[0:2]]
+    factors_right = [ value / sum(distances[2:4]) *2 for value in distances[2:4]]
+
+    step_factors_left = np.linspace(min(factors_left), max(factors_left), grid_size-1)
+    step_factors_right = np.linspace(min(factors_right), max(factors_right), grid_size-1)
+
+    step_left = abs(corners[1][0]-corners[0][0])/(grid_size)
+    step_right = abs(corners[2][0]-corners[3][0])/(grid_size)
+
+    x_start_left = min([corners[1][0], corners[0][0]])
+    left_x = [x_start_left+idx*factor*step_left for idx, factor in enumerate(step_factors_left)]
+    left_points = [[x, rc_left*b_left*x] for x in left_x]
+
+    x_start_right = min([corners[2][0], corners[3][0]])
+    right_x = [x_start_right+idx*factor*step_right for idx, factor in enumerate(step_factors_right)]
+    right_points = [[x,rc_right*b_right*x] for x in right_x]
 
     for idx, point in enumerate(zip(left_points, right_points)):
 
