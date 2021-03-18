@@ -14,30 +14,10 @@ def preprocess(image_path):
     return img
 
 
-def lbp_edge(image):
-    lbp = local_binary_pattern(image, 8, 1, 'uniform')
-    lbp_edge = lbp == 4
-    lbp_edge = np.array(lbp_edge*1)
-    return lbp_edge
-
-
-def thresh(image, trh):
+def get_thresh(image, trh):
     treshed = image < trh
     treshed = np.array(treshed*1)
     return treshed
-
-
-def find_patches(image, bins):
-    patches = filters.gaussian(image, 5)
-    range_img = patches.max()-patches.min()
-    min_img = patches.min()
-    patch_work = np.zeros(np.shape(patches))
-    for i in range(1,bins+1):
-        thresh = ((i/bins) * range_img) + min_img
-        patch = patches < thresh
-        patch_work += (patch*1)
-    
-    return patch_work
 
 
 def edges_binar(image):
@@ -76,6 +56,7 @@ def check_orientation(image):
     else:
         return 0
 
+
 def find_edges(mid_x, mid_y, x, y, thresh):
 
     min_x_upp = min(x[mid_x:])
@@ -109,15 +90,6 @@ def find_edges(mid_x, mid_y, x, y, thresh):
     return [x_edge_upp, x_edge_low], [y_edge_upp,  y_edge_low]
 
 
-def edge_to_corner(x_edge, y_edge):
-    corner_matrix = [[0,0], [0,1], [1,1], [1,0]]
-    corner_coords = []
-    for corner in corner_matrix:
-        corner_coords.append([x_edge[corner[0]], y_edge[corner[1]]])
-
-    return corner_coords
-
-
 def crop_to_edge(image, x_edge, y_edge, mid_x, mid_y):
     image = image[y_edge[1]: y_edge[0],x_edge[1]:x_edge[0]]
     labels = morphology.label(image, connectivity=2)
@@ -125,12 +97,6 @@ def crop_to_edge(image, x_edge, y_edge, mid_x, mid_y):
     assert( labels.max() != 0 )
     image = labels == np.argmax(np.bincount(labels.flat)[1:])+1
     return image, mid_x - x_edge[1], mid_y - y_edge[1], orientation
-
-
-def plot_corners(corner_coords):
-    corner_ofset = [corner_coords[(idx+1)%4] for idx, _ in enumerate(corner_coords)]
-    for corner1, corner2 in zip(corner_coords, corner_ofset):
-        plt.plot([corner1[0], corner2[0]], [corner1[1], corner2[1]])
 
 
 def get_x_y_pairs(image):
@@ -300,7 +266,7 @@ def get_vanishing_point(edge1, edge2, grid_size):
     return [x_intersect, y_intersect]
 
 
-def translate_crop(corners, image, grid_size):
+def translate_crop(corners, image, grid_size, flip):
 
     cropped_img = np.zeros((grid_size, grid_size))
     vanishing_point_row = get_vanishing_point([corners[1], corners[0]], [corners[2], corners[3]], grid_size)
@@ -309,23 +275,36 @@ def translate_crop(corners, image, grid_size):
     right_points = get_sample_points(vanishing_point_row, corners[2], corners[3], grid_size)
 
     vanishing_point_col = get_vanishing_point([corners[2], corners[1]], [corners[3], corners[0]], grid_size)
-    for idx, point in enumerate(zip(left_points, right_points)):
-        sample_points = get_sample_points_row(vanishing_point_col, point[0], point[1], grid_size)
-        row = [interpolate(image, sample) for sample in sample_points]
-        cropped_img[grid_size - idx -1, :] = row
+
+    if flip == 0:
+        for idx, point in enumerate(zip(left_points, right_points)):
+            sample_points = get_sample_points_row(vanishing_point_col, point[0], point[1], grid_size)
+            row = [interpolate(image, sample) for sample in sample_points]
+            cropped_img[grid_size - idx -1, :] = row
+    else:
+        for idx, point in enumerate(zip(left_points, right_points)):
+            sample_points = get_sample_points_row(vanishing_point_col, point[0], point[1], grid_size)
+            row = [interpolate(image, sample) for sample in sample_points]
+            cropped_img[idx] = row
 
     return cropped_img
 
 
-def main(plot):
-    image_paths =  ['sudoku_straight.jpeg', 'sudoku_diag.jpeg',  'sudoku_straight_tilted.jpeg', 'sudoku_diag_tilted.jpeg']
+def main(plot, image_paths):
     if plot == 'yes':
         plt.figure(1)
 
     for idx, path in enumerate(image_paths):
         image = preprocess(path)
+        rows, cols = image.shape
 
-        dark = thresh(image, 0.6)
+        if rows > cols:
+            image = np.transpose(image)
+            flip = 1
+        else:
+            flip = 0
+
+        dark = get_thresh(image, 0.6)
         edges = edges_binar(dark)
 
         mid_x, mid_y, x, y = find_mid(edges)
@@ -342,14 +321,16 @@ def main(plot):
             corners = get_corners_tilted(x_y_pairs, distances, mid_x_new, mid_y_new, x_edge[1], y_edge[1])
 
 
-        cropped_img = translate_crop(corners, image, 250)
+        cropped_img = translate_crop(corners, image, 250, flip)
         print(datetime.now() - startTime)
 
         if plot == 'yes':
-            plt.subplot(2, 2, idx+1)
+            plt.subplot(2, 4, idx+5)
             plt.imshow(cropped_img, cmap = 'gray')
+            plt.subplot(2,4,idx+1)
+            plt.imshow(image, cmap = 'gray')
 
-
-main('yes')
+image_paths =  ['sudoku_straight.jpeg','sudoku_diag.jpeg', 'sudoku_diag_tilted.jpeg', 'sudoku_straight_tilted.jpeg']
+main('yes', image_paths)
 
 io.show()
