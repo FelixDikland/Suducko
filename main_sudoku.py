@@ -90,12 +90,46 @@ def find_edges(mid_x, mid_y, x, y, thresh):
     return [x_edge_upp, x_edge_low], [y_edge_upp,  y_edge_low]
 
 
+def find_left_right(label_list):
+    for idx, value in enumerate(label_list):
+        if value > 0:
+            left = idx
+            break
+    for idx, value in enumerate(label_list[::-1]):
+        if value > 0:
+            right = idx
+            break
+
+    return len(label_list)-left-right
+
+
 def crop_to_edge(image, x_edge, y_edge, mid_x, mid_y):
     image = image[y_edge[1]: y_edge[0],x_edge[1]:x_edge[0]]
-    labels = morphology.label(image, connectivity=2)
     orientation = check_orientation(image)
-    assert( labels.max() != 0 )
-    image = labels == np.argmax(np.bincount(labels.flat)[1:])+1
+    labels = morphology.label(image, connectivity=2)
+    spread = []
+
+    for label in set(labels.flat):
+        if label != 0:
+            labels_sort = labels == label
+            y_labels_sort = sum(labels_sort)
+            transposed = labels_sort.transpose()
+            x_labels_sort = sum(transposed)
+            spread.append(find_left_right(y_labels_sort) * find_left_right(x_labels_sort))
+    # assert( labels.max() != 0 )
+    # image = labels == np.argmax(np.bincount(labels.flat)[1:])+1
+    image = labels == np.argmax(spread)+1
+
+    x = sum(image)
+    transposed = image.transpose()
+    y = sum(transposed)
+
+    x = [value*idx for idx, value in enumerate(x)]
+    y = [value*idx for idx, value in enumerate(y)]
+
+    mid_x = sum(x)/len(x)
+    mid_y = sum(y)/len(y)
+
     return image, mid_x - x_edge[1], mid_y - y_edge[1], orientation
 
 
@@ -290,6 +324,56 @@ def translate_crop(corners, image, grid_size, flip):
     return cropped_img
 
 
+def test(path, stage):
+    plt.figure()
+
+    image = preprocess(path)
+    rows, cols = image.shape
+
+    if rows > cols:
+        image = np.transpose(image)
+        flip = 1
+    else:
+        flip = 0
+
+    if stage > 0:
+        dark = get_thresh(image, 0.6)
+        plt.subplot(2,2,1)
+        plt.imshow(dark, cmap = 'gray')
+    
+    if stage > 1:
+        edges = edges_binar(dark)
+
+        plt.subplot(2,2,2)
+        plt.imshow(edges, cmap = 'gray')
+
+    if stage > 2:
+        mid_x, mid_y, x, y = find_mid(edges)
+        x_edge, y_edge = find_edges(mid_x, mid_y, x, y,2)
+
+        edges, mid_x_new, mid_y_new, orientation = crop_to_edge(edges, x_edge, y_edge, mid_x, mid_y)
+
+        x_y_pairs = get_x_y_pairs(edges)
+        distances = get_euclidean_distances(x_y_pairs, mid_x_new, mid_y_new)
+
+        plt.subplot(2,2,3)
+        plt.imshow(edges, cmap = 'gray')
+        print(f'the orientation is {orientation}')
+    if stage > 3:
+        if orientation == 1:
+            corners = get_corners_straight(x_y_pairs, distances, mid_x_new, mid_y_new, x_edge[1], y_edge[1])
+        else:
+            corners = get_corners_tilted(x_y_pairs, distances, mid_x_new, mid_y_new, x_edge[1], y_edge[1])
+
+
+        cropped_img = translate_crop(corners, image, 250, flip)
+
+        plt.subplot(2,2,4)
+        plt.imshow(cropped_img, cmap = 'gray')
+    print(datetime.now() - startTime)
+    plt.show()
+
+
 def main(plot, image_paths):
     if plot == 'yes':
         plt.figure(1)
@@ -329,8 +413,7 @@ def main(plot, image_paths):
             plt.imshow(cropped_img, cmap = 'gray')
             plt.subplot(2,4,idx+1)
             plt.imshow(image, cmap = 'gray')
+    plt.show()
+#image_paths =  ['sudoku_straight.jpeg','sudoku_diag.jpeg', 'sudoku_diag_tilted.jpeg', 'sudoku_straight_tilted.jpeg']
+#main('yes', image_paths)
 
-image_paths =  ['sudoku_straight.jpeg','sudoku_diag.jpeg', 'sudoku_diag_tilted.jpeg', 'sudoku_straight_tilted.jpeg']
-main('yes', image_paths)
-
-io.show()
